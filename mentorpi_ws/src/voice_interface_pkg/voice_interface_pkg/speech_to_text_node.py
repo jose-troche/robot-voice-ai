@@ -42,6 +42,12 @@ class SpeechToTextNode(Node):
         self.declare_parameter("transcribe_file_on_startup", True)
         self.declare_parameter("fallback_to_device_sample_rate", True)
         self.declare_parameter("log_audio_levels", False)
+        self.declare_parameter("debug_capture", False)
+        self.declare_parameter("debug_every_n_chunks", 1)
+        self.declare_parameter("auto_calibrate", True)
+        self.declare_parameter("calibration_seconds", 2.0)
+        self.declare_parameter("calibration_multiplier", 3.0)
+        self.declare_parameter("minimum_energy_threshold", 0.001)
 
         self.model_name = self.get_parameter("model_name").get_parameter_value().string_value
         self.sample_rate = (
@@ -86,6 +92,26 @@ class SpeechToTextNode(Node):
         self.log_audio_levels = (
             self.get_parameter("log_audio_levels").get_parameter_value().bool_value
         )
+        self.debug_capture = (
+            self.get_parameter("debug_capture").get_parameter_value().bool_value
+        )
+        self.debug_every_n_chunks = max(
+            1, self.get_parameter("debug_every_n_chunks").get_parameter_value().integer_value
+        )
+        self.auto_calibrate = (
+            self.get_parameter("auto_calibrate").get_parameter_value().bool_value
+        )
+        self.calibration_seconds = (
+            self.get_parameter("calibration_seconds").get_parameter_value().double_value
+        )
+        self.calibration_multiplier = (
+            self.get_parameter("calibration_multiplier").get_parameter_value().double_value
+        )
+        self.minimum_energy_threshold = (
+            self.get_parameter("minimum_energy_threshold")
+            .get_parameter_value()
+            .double_value
+        )
 
         self.audio_queue = queue.Queue()
         self.stop_event = threading.Event()
@@ -95,18 +121,24 @@ class SpeechToTextNode(Node):
         self.model = None
         self.resolved_audio_device = None
         self.capture_sample_rate = self.sample_rate
+        self.capture_chunk_count = 0
 
         self.create_subscription(String, "/speech_to_text/control", self.handle_control, 10)
         self._load_model()
         self._log_audio_devices()
         self._resolve_audio_device()
         self._validate_audio_input()
+        self._calibrate_audio_threshold()
         self._transcribe_startup_file()
         self._start_workers()
 
         self.get_logger().info(
             f"speech_to_text_node ready with local Whisper model '{self.model_name}'"
         )
+        if self.debug_capture:
+            self.get_logger().info(
+                "debug_capture enabled; microphone capture loop will log chunk statistics"
+            )
 
     def _load_model(self) -> None:
         if whisper is None:
@@ -223,14 +255,75 @@ class SpeechToTextNode(Node):
         self.transcribe_thread = threading.Thread(target=self._transcribe_loop, daemon=True)
         self.capture_thread.start()
         self.transcribe_thread.start()
+        if self.debug_capture:
+            self.get_logger().info("capture and transcription worker threads started")
+
+    def _calibrate_audio_threshold(self) -> None:
+        if not self.auto_calibrate:
+            self.get_logger().info(
+                f"auto calibration disabled; using energy_threshold={self.energy_threshold:.5f}"
+            )
+            return
+
+        if np is None or sd is None:
+            self.get_logger().warning(
+                "cannot auto-calibrate without numpy and sounddevice; "
+                f"using energy_threshold={self.energy_threshold:.5f}"
+            )
+            return
+
+        frames = max(1, int(self.capture_sample_rate * self.calibration_seconds))
+        self.get_logger().info(
+            "calibrating microphone noise floor for %.2f seconds; keep the room quiet"
+            % self.calibration_seconds
+        )
+
+        try:
+            audio = sd.rec(
+                frames,
+                samplerate=self.capture_sample_rate,
+                channels=1,
+                dtype="float32",
+                device=self.resolved_audio_device,
+            )
+            sd.wait()
+        except Exception as exc:
+            self.get_logger().warning(
+                f"audio calibration failed: {exc}; using energy_threshold={self.energy_threshold:.5f}"
+            )
+            return
+
+        audio = np.squeeze(audio)
+        if audio.size == 0:
+            self.get_logger().warning(
+                "audio calibration captured no samples; "
+                f"using energy_threshold={self.energy_threshold:.5f}"
+            )
+            return
+
+        rms = float(np.sqrt(np.mean(np.square(audio))))
+        peak = float(np.max(np.abs(audio)))
+        calibrated = max(
+            self.minimum_energy_threshold,
+            rms * self.calibration_multiplier,
+        )
+        self.energy_threshold = calibrated
+        self.get_logger().info(
+            "audio calibration complete: noise_rms=%.5f peak=%.5f "
+            "multiplier=%.2f -> energy_threshold=%.5f"
+            % (rms, peak, self.calibration_multiplier, self.energy_threshold)
+        )
 
     def _capture_loop(self) -> None:
         frames_per_chunk = max(1, int(self.capture_sample_rate * self.chunk_seconds))
         while not self.stop_event.is_set():
             if not self.listening_enabled:
+                if self.debug_capture:
+                    self.get_logger().info("capture loop idle because listening is disabled")
                 time.sleep(self.poll_interval_seconds)
                 continue
             try:
+                start_time = time.time()
                 audio = sd.rec(
                     frames_per_chunk,
                     samplerate=self.capture_sample_rate,
@@ -239,24 +332,59 @@ class SpeechToTextNode(Node):
                     device=self.resolved_audio_device,
                 )
                 sd.wait()
+                elapsed = time.time() - start_time
             except Exception as exc:
                 self.get_logger().error(f"microphone capture failed: {exc}")
                 time.sleep(2.0)
                 continue
 
+            self.capture_chunk_count += 1
             audio = np.squeeze(audio)
             if audio.size == 0:
+                if self.debug_capture:
+                    self.get_logger().warning(
+                        f"capture chunk {self.capture_chunk_count}: empty audio buffer"
+                    )
                 time.sleep(self.poll_interval_seconds)
                 continue
 
             rms = float(np.sqrt(np.mean(np.square(audio))))
+            peak = float(np.max(np.abs(audio)))
+            should_log_chunk = (
+                self.debug_capture
+                and self.capture_chunk_count % self.debug_every_n_chunks == 0
+            )
+            if should_log_chunk:
+                self.get_logger().info(
+                    "capture chunk %d: samples=%d rms=%.5f peak=%.5f "
+                    "queue=%d capture_dt=%.3fs sample_rate=%d device=%s"
+                    % (
+                        self.capture_chunk_count,
+                        int(audio.size),
+                        rms,
+                        peak,
+                        self.audio_queue.qsize(),
+                        elapsed,
+                        self.capture_sample_rate,
+                        str(self.resolved_audio_device),
+                    )
+                )
             if self.log_audio_levels:
                 self.get_logger().info(f"audio rms={rms:.5f}")
             if rms < self.energy_threshold:
+                if should_log_chunk:
+                    self.get_logger().info(
+                        f"capture chunk {self.capture_chunk_count}: below energy threshold "
+                        f"{self.energy_threshold:.5f}, dropping"
+                    )
                 time.sleep(self.poll_interval_seconds)
                 continue
 
             self.audio_queue.put(audio.copy())
+            if should_log_chunk:
+                self.get_logger().info(
+                    f"capture chunk {self.capture_chunk_count}: queued for transcription"
+                )
             time.sleep(self.poll_interval_seconds)
 
     def _transcribe_loop(self) -> None:
@@ -264,6 +392,8 @@ class SpeechToTextNode(Node):
             try:
                 audio = self.audio_queue.get(timeout=0.5)
             except queue.Empty:
+                if self.debug_capture:
+                    self.get_logger().info("transcribe loop waiting for audio chunk")
                 continue
 
             if self.model is None:
@@ -271,6 +401,10 @@ class SpeechToTextNode(Node):
                 continue
 
             try:
+                if self.debug_capture:
+                    self.get_logger().info(
+                        f"transcribe loop: starting Whisper on chunk with {len(audio)} samples"
+                    )
                 result = self.model.transcribe(
                     audio.astype(np.float32),
                     language=self.language or None,
@@ -283,6 +417,8 @@ class SpeechToTextNode(Node):
 
             text = result.get("text", "").strip()
             if not text:
+                if self.debug_capture:
+                    self.get_logger().info("transcribe loop: Whisper returned empty text")
                 continue
 
             self.voice_pub.publish(String(data=text))
