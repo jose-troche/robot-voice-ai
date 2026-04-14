@@ -55,6 +55,72 @@ ros2 launch robot_bringup smoke_test.launch.py
 This launch starts the semantic map, voice router, task planner, navigation executor,
 exploration manager, and object search nodes together.
 
+## Speech-To-Text Usage
+
+Run the local Whisper STT node:
+
+```bash
+cd mentorpi_ws
+source install/setup.bash
+ros2 run voice_interface_pkg speech_to_text_node
+```
+
+Run with a different Whisper model:
+
+```bash
+ros2 run voice_interface_pkg speech_to_text_node --ros-args -p model_name:=small
+```
+
+List available audio devices at startup:
+
+```bash
+ros2 run voice_interface_pkg speech_to_text_node --ros-args -p list_audio_devices:=true
+```
+
+Use a specific input device:
+
+```bash
+ros2 run voice_interface_pkg speech_to_text_node --ros-args -p audio_device:=\"USB Audio Device\"
+```
+
+Transcribe a local audio file on startup:
+
+```bash
+ros2 run voice_interface_pkg speech_to_text_node --ros-args -p auto_listen:=false -p audio_file:=/tmp/sample.wav
+```
+
+Run in push-to-talk mode:
+
+```bash
+ros2 run voice_interface_pkg speech_to_text_node --ros-args -p push_to_talk:=true
+```
+
+Start microphone capture:
+
+```bash
+ros2 topic pub --once /speech_to_text/control std_msgs/msg/String '{data: start}'
+```
+
+Stop microphone capture:
+
+```bash
+ros2 topic pub --once /speech_to_text/control std_msgs/msg/String '{data: stop}'
+```
+
+Toggle microphone capture:
+
+```bash
+ros2 topic pub --once /speech_to_text/control std_msgs/msg/String '{data: toggle}'
+```
+
+Transcribe a file through the control topic:
+
+```bash
+ros2 topic pub --once /speech_to_text/control std_msgs/msg/String '{data: "file:/tmp/sample.wav"}'
+```
+
+The node publishes recognized text to `/voice_text`.
+
 ## Suggested Next Steps
 
 1. Wire `robot_bringup` to actual MentorPi drivers and launch files.
