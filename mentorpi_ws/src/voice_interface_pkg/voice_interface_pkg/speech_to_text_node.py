@@ -502,4 +502,5 @@ def main() -> None:
         node.get_logger().info("keyboard interrupt received, shutting down speech_to_text_node")
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
