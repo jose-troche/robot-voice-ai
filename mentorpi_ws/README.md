@@ -44,6 +44,17 @@ colcon build
 source install/setup.bash
 ```
 
+## Smoke Test Launch
+
+```bash
+cd mentorpi_ws
+source install/setup.bash
+ros2 launch robot_bringup smoke_test.launch.py
+```
+
+This launch starts the semantic map, voice router, task planner, navigation executor,
+exploration manager, and object search nodes together.
+
 ## Suggested Next Steps
 
 1. Wire `robot_bringup` to actual MentorPi drivers and launch files.

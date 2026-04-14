@@ -1,30 +1,47 @@
-import json
-
 import rclpy
 from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from rclpy.node import Node
+from robot_voice_ai_interfaces.msg import TaskPlan
 from robot_voice_ai_interfaces.srv import GetRoom
 from std_msgs.msg import String
+
+try:
+    from nav2_msgs.action import NavigateToPose
+except ImportError:
+    NavigateToPose = None
 
 
 class NavigationExecutorNode(Node):
     def __init__(self) -> None:
         super().__init__("navigation_executor_node")
-        self.create_subscription(String, "/task_plan", self.handle_plan, 10)
+        self.create_subscription(TaskPlan, "/task_plan", self.handle_plan, 10)
         self.response_pub = self.create_publisher(String, "/robot_response", 10)
         self.get_room_client = self.create_client(GetRoom, "/semantic_map/get_room")
-        self.nav_client = ActionClient(self, NavigateToPose, "/navigate_to_pose")
+        self.nav_client = (
+            ActionClient(self, NavigateToPose, "/navigate_to_pose")
+            if NavigateToPose is not None
+            else None
+        )
+        if self.nav_client is None:
+            self.get_logger().warning(
+                "nav2_msgs is unavailable; navigation goals will be reported but not executed"
+            )
         self.get_logger().info("navigation_executor_node ready")
 
-    def handle_plan(self, msg: String) -> None:
-        plan = json.loads(msg.data)
-        if plan.get("type") != "navigate":
+    def handle_plan(self, msg: TaskPlan) -> None:
+        if msg.plan_type != "navigate":
             return
-        room_name = plan.get("goal", "")
+        room_name = msg.goal
         request = GetRoom.Request()
         request.name = room_name
+
+        if self.nav_client is None:
+            self.response_pub.publish(
+                String(data="Nav2 is unavailable in this environment; cannot execute navigation")
+            )
+            self.get_logger().warning("cannot execute navigation without nav2_msgs")
+            return
 
         if not self.get_room_client.wait_for_service(timeout_sec=1.0):
             self.response_pub.publish(String(data="Semantic map service not available"))
