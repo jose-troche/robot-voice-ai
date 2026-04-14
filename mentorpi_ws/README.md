@@ -65,6 +65,8 @@ source install/setup.bash
 ros2 run voice_interface_pkg speech_to_text_node
 ```
 
+For low-gain VM microphone setups, the default STT tuning now assumes a lower voice activity threshold and leaves calibration off by default.
+
 Run with a different Whisper model:
 
 ```bash
@@ -93,6 +95,12 @@ Log live input levels while debugging microphone capture:
 
 ```bash
 ros2 run voice_interface_pkg speech_to_text_node --ros-args -p audio_device_index:=0 -p log_audio_levels:=true
+```
+
+Recommended VM microphone baseline:
+
+```bash
+ros2 run voice_interface_pkg speech_to_text_node --ros-args -p audio_device_index:=0 -p auto_calibrate:=false -p energy_threshold:=0.0005
 ```
 
 Transcribe a local audio file on startup:
@@ -176,6 +184,8 @@ source ~/.venvs/robot-voice-ai/bin/activate
 pip install --upgrade pip
 pip install "coverage>=7" numpy sounddevice openai-whisper
 ```
+
+If live mic capture works only with very low thresholds in a VM, prefer manual tuning such as `energy_threshold:=0.0005` and keep `auto_calibrate:=false`.
 
 ## Suggested Next Steps
 
