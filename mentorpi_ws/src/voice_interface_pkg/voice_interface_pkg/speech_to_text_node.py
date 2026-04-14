@@ -137,10 +137,25 @@ class SpeechToTextNode(Node):
         self.get_logger().info(
             f"speech_to_text_node ready with local Whisper model '{self.model_name}'"
         )
+        self.get_logger().info(
+            f"speech_to_text_node energy_threshold={self.energy_threshold:.5f}"
+        )
         if self.debug_capture:
-            self.get_logger().info(
-                "debug_capture enabled; microphone capture loop will log chunk statistics"
+            self._safe_log(
+                "info",
+                "debug_capture enabled; microphone capture loop will log chunk statistics",
             )
+
+    def _safe_log(self, level: str, message: str) -> None:
+        try:
+            if not rclpy.ok():
+                return
+            logger = self.get_logger()
+            log_fn = getattr(logger, level, None)
+            if log_fn is not None:
+                log_fn(message)
+        except Exception:
+            pass
 
     def _load_model(self) -> None:
         if whisper is None:
@@ -258,7 +273,7 @@ class SpeechToTextNode(Node):
         self.capture_thread.start()
         self.transcribe_thread.start()
         if self.debug_capture:
-            self.get_logger().info("capture and transcription worker threads started")
+            self._safe_log("info", "capture and transcription worker threads started")
 
     def _calibrate_audio_threshold(self) -> None:
         if not self.auto_calibrate:
@@ -321,7 +336,7 @@ class SpeechToTextNode(Node):
         while not self.stop_event.is_set():
             if not self.listening_enabled:
                 if self.debug_capture:
-                    self.get_logger().info("capture loop idle because listening is disabled")
+                    self._safe_log("info", "capture loop idle because listening is disabled")
                 time.sleep(self.poll_interval_seconds)
                 continue
             try:
@@ -344,7 +359,8 @@ class SpeechToTextNode(Node):
             audio = np.squeeze(audio)
             if audio.size == 0:
                 if self.debug_capture:
-                    self.get_logger().warning(
+                    self._safe_log(
+                        "warning",
                         f"capture chunk {self.capture_chunk_count}: empty audio buffer"
                     )
                 time.sleep(self.poll_interval_seconds)
@@ -357,7 +373,8 @@ class SpeechToTextNode(Node):
                 and self.capture_chunk_count % self.debug_every_n_chunks == 0
             )
             if should_log_chunk:
-                self.get_logger().info(
+                self._safe_log(
+                    "info",
                     "capture chunk %d: samples=%d rms=%.5f peak=%.5f "
                     "queue=%d capture_dt=%.3fs sample_rate=%d device=%s"
                     % (
@@ -375,7 +392,8 @@ class SpeechToTextNode(Node):
                 self.get_logger().info(f"audio rms={rms:.5f}")
             if rms < self.energy_threshold:
                 if should_log_chunk:
-                    self.get_logger().info(
+                    self._safe_log(
+                        "info",
                         f"capture chunk {self.capture_chunk_count}: below energy threshold "
                         f"{self.energy_threshold:.5f}, dropping"
                     )
@@ -384,7 +402,8 @@ class SpeechToTextNode(Node):
 
             self.audio_queue.put(audio.copy())
             if should_log_chunk:
-                self.get_logger().info(
+                self._safe_log(
+                    "info",
                     f"capture chunk {self.capture_chunk_count}: queued for transcription"
                 )
             time.sleep(self.poll_interval_seconds)
@@ -395,7 +414,7 @@ class SpeechToTextNode(Node):
                 audio = self.audio_queue.get(timeout=0.5)
             except queue.Empty:
                 if self.debug_capture:
-                    self.get_logger().info("transcribe loop waiting for audio chunk")
+                    self._safe_log("info", "transcribe loop waiting for audio chunk")
                 continue
 
             if self.model is None:
@@ -404,7 +423,8 @@ class SpeechToTextNode(Node):
 
             try:
                 if self.debug_capture:
-                    self.get_logger().info(
+                    self._safe_log(
+                        "info",
                         f"transcribe loop: starting Whisper on chunk with {len(audio)} samples"
                     )
                 result = self.model.transcribe(
@@ -420,7 +440,7 @@ class SpeechToTextNode(Node):
             text = result.get("text", "").strip()
             if not text:
                 if self.debug_capture:
-                    self.get_logger().info("transcribe loop: Whisper returned empty text")
+                    self._safe_log("info", "transcribe loop: Whisper returned empty text")
                 continue
 
             self.voice_pub.publish(String(data=text))
@@ -481,16 +501,16 @@ class SpeechToTextNode(Node):
         if sd is not None:
             try:
                 sd.stop()
-            except Exception as exc:
-                self.get_logger().warning(f"failed to stop audio backend cleanly: {exc}")
+            except Exception:
+                pass
         if self.capture_thread and self.capture_thread.is_alive():
             self.capture_thread.join(timeout=max(1.0, self.chunk_seconds + 1.0))
             if self.capture_thread.is_alive():
-                self.get_logger().warning("capture thread did not exit before timeout")
+                self._safe_log("warning", "capture thread did not exit before timeout")
         if self.transcribe_thread and self.transcribe_thread.is_alive():
             self.transcribe_thread.join(timeout=2.0)
             if self.transcribe_thread.is_alive():
-                self.get_logger().warning("transcribe thread did not exit before timeout")
+                self._safe_log("warning", "transcribe thread did not exit before timeout")
         super().destroy_node()
 
 
@@ -500,7 +520,7 @@ def main() -> None:
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info("keyboard interrupt received, shutting down speech_to_text_node")
+        node._safe_log("info", "keyboard interrupt received, shutting down speech_to_text_node")
     finally:
         node.destroy_node()
         try:
