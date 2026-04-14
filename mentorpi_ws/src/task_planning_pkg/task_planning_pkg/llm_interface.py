@@ -1,9 +1,9 @@
-def build_plan(intent_payload: dict) -> dict:
-    intent = intent_payload.get("intent")
+def build_plan(intent_payload) -> dict:
+    intent = intent_payload.intent
     if intent == "navigate":
-        return {"type": "navigate", "goal": intent_payload.get("target", "")}
+        return {"type": "navigate", "goal": intent_payload.target}
     if intent == "search_object":
-        return {"type": "search_object", "query": intent_payload.get("query", "")}
+        return {"type": "search_object", "query": intent_payload.query}
     if intent == "tag_room":
-        return {"type": "tag_room", "name": intent_payload.get("target", "")}
+        return {"type": "tag_room", "name": intent_payload.target}
     return {"type": "noop", "reason": "unrecognized intent"}
