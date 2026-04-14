@@ -33,7 +33,7 @@ class SpeechToTextNode(Node):
         self.declare_parameter("audio_device_index", -1)
         self.declare_parameter("chunk_seconds", 4.0)
         self.declare_parameter("language", "en")
-        self.declare_parameter("energy_threshold", 0.0005)
+        self.declare_parameter("energy_threshold", 0.00075)
         self.declare_parameter("poll_interval_seconds", 0.25)
         self.declare_parameter("audio_device", "")
         self.declare_parameter("auto_listen", True)
