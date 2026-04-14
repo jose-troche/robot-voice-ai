@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>navigation_stack</name>
+  <version>0.0.1</version>
+  <description>Navigation configuration placeholders for Nav2 integration.</description>
+  <maintainer email="user@example.com">Robot Voice AI</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
