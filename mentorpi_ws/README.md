@@ -80,7 +80,19 @@ ros2 run voice_interface_pkg speech_to_text_node --ros-args -p list_audio_device
 Use a specific input device:
 
 ```bash
-ros2 run voice_interface_pkg speech_to_text_node --ros-args -p audio_device:=\"USB Audio Device\"
+ros2 run voice_interface_pkg speech_to_text_node --ros-args -p audio_device_index:=0
+```
+
+Or use an exact device name if needed:
+
+```bash
+ros2 run voice_interface_pkg speech_to_text_node --ros-args -p 'audio_device:="USB Audio Device"'
+```
+
+Log live input levels while debugging microphone capture:
+
+```bash
+ros2 run voice_interface_pkg speech_to_text_node --ros-args -p audio_device_index:=0 -p log_audio_levels:=true
 ```
 
 Transcribe a local audio file on startup:

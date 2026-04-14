@@ -29,6 +29,7 @@ class SpeechToTextNode(Node):
         self.voice_pub = self.create_publisher(String, "/voice_text", 10)
         self.declare_parameter("model_name", "base")
         self.declare_parameter("sample_rate", 16000)
+        self.declare_parameter("audio_device_index", -1)
         self.declare_parameter("chunk_seconds", 4.0)
         self.declare_parameter("language", "en")
         self.declare_parameter("energy_threshold", 0.015)
@@ -39,10 +40,15 @@ class SpeechToTextNode(Node):
         self.declare_parameter("list_audio_devices", False)
         self.declare_parameter("audio_file", "")
         self.declare_parameter("transcribe_file_on_startup", True)
+        self.declare_parameter("fallback_to_device_sample_rate", True)
+        self.declare_parameter("log_audio_levels", False)
 
         self.model_name = self.get_parameter("model_name").get_parameter_value().string_value
         self.sample_rate = (
             self.get_parameter("sample_rate").get_parameter_value().integer_value
+        )
+        self.audio_device_index = (
+            self.get_parameter("audio_device_index").get_parameter_value().integer_value
         )
         self.chunk_seconds = (
             self.get_parameter("chunk_seconds").get_parameter_value().double_value
@@ -72,6 +78,14 @@ class SpeechToTextNode(Node):
         self.transcribe_file_on_startup = (
             self.get_parameter("transcribe_file_on_startup").get_parameter_value().bool_value
         )
+        self.fallback_to_device_sample_rate = (
+            self.get_parameter("fallback_to_device_sample_rate")
+            .get_parameter_value()
+            .bool_value
+        )
+        self.log_audio_levels = (
+            self.get_parameter("log_audio_levels").get_parameter_value().bool_value
+        )
 
         self.audio_queue = queue.Queue()
         self.stop_event = threading.Event()
@@ -79,10 +93,14 @@ class SpeechToTextNode(Node):
         self.capture_thread = None
         self.transcribe_thread = None
         self.model = None
+        self.resolved_audio_device = None
+        self.capture_sample_rate = self.sample_rate
 
         self.create_subscription(String, "/speech_to_text/control", self.handle_control, 10)
         self._load_model()
         self._log_audio_devices()
+        self._resolve_audio_device()
+        self._validate_audio_input()
         self._transcribe_startup_file()
         self._start_workers()
 
@@ -120,6 +138,64 @@ class SpeechToTextNode(Node):
                 f"in={device['max_input_channels']} out={device['max_output_channels']}"
             )
 
+    def _resolve_audio_device(self) -> None:
+        if sd is None:
+            return
+        if self.audio_device_index >= 0:
+            self.resolved_audio_device = int(self.audio_device_index)
+            self.get_logger().info(f"using audio device index {self.resolved_audio_device}")
+            return
+        if self.audio_device is None:
+            self.resolved_audio_device = None
+            self.get_logger().info("using default input audio device")
+            return
+        if self.audio_device.isdigit():
+            self.resolved_audio_device = int(self.audio_device)
+            self.get_logger().info(f"using audio device index {self.resolved_audio_device}")
+            return
+        self.resolved_audio_device = self.audio_device
+        self.get_logger().info(f"using audio device name '{self.resolved_audio_device}'")
+
+    def _validate_audio_input(self) -> None:
+        if sd is None:
+            return
+
+        try:
+            sd.check_input_settings(
+                device=self.resolved_audio_device,
+                samplerate=self.sample_rate,
+                channels=1,
+                dtype="float32",
+            )
+            self.capture_sample_rate = self.sample_rate
+            self.get_logger().info(
+                f"audio input validated at {self.capture_sample_rate} Hz"
+            )
+            return
+        except Exception as exc:
+            self.get_logger().warning(
+                f"audio input validation failed at {self.sample_rate} Hz: {exc}"
+            )
+
+        if not self.fallback_to_device_sample_rate:
+            return
+
+        try:
+            device_info = sd.query_devices(self.resolved_audio_device, "input")
+            fallback_rate = int(device_info["default_samplerate"])
+            sd.check_input_settings(
+                device=self.resolved_audio_device,
+                samplerate=fallback_rate,
+                channels=1,
+                dtype="float32",
+            )
+            self.capture_sample_rate = fallback_rate
+            self.get_logger().warning(
+                f"falling back to device default sample rate {self.capture_sample_rate} Hz"
+            )
+        except Exception as exc:
+            self.get_logger().error(f"audio input could not be validated: {exc}")
+
     def _transcribe_startup_file(self) -> None:
         if not self.audio_file or not self.transcribe_file_on_startup:
             return
@@ -149,7 +225,7 @@ class SpeechToTextNode(Node):
         self.transcribe_thread.start()
 
     def _capture_loop(self) -> None:
-        frames_per_chunk = max(1, int(self.sample_rate * self.chunk_seconds))
+        frames_per_chunk = max(1, int(self.capture_sample_rate * self.chunk_seconds))
         while not self.stop_event.is_set():
             if not self.listening_enabled:
                 time.sleep(self.poll_interval_seconds)
@@ -157,10 +233,10 @@ class SpeechToTextNode(Node):
             try:
                 audio = sd.rec(
                     frames_per_chunk,
-                    samplerate=self.sample_rate,
+                    samplerate=self.capture_sample_rate,
                     channels=1,
                     dtype="float32",
-                    device=self.audio_device,
+                    device=self.resolved_audio_device,
                 )
                 sd.wait()
             except Exception as exc:
@@ -174,6 +250,8 @@ class SpeechToTextNode(Node):
                 continue
 
             rms = float(np.sqrt(np.mean(np.square(audio))))
+            if self.log_audio_levels:
+                self.get_logger().info(f"audio rms={rms:.5f}")
             if rms < self.energy_threshold:
                 time.sleep(self.poll_interval_seconds)
                 continue
