@@ -121,6 +121,50 @@ ros2 topic pub --once /speech_to_text/control std_msgs/msg/String '{data: "file:
 
 The node publishes recognized text to `/voice_text`.
 
+## Speech-To-Text Troubleshooting
+
+If `speech_to_text_node` fails with an error like:
+
+```text
+AttributeError: module 'coverage' has no attribute 'types'
+```
+
+that usually means `numba` and `coverage` are mismatched in the Python environment used by Whisper.
+
+Quick fix:
+
+```bash
+python3 -m pip install --user --upgrade "coverage>=7"
+```
+
+Then verify:
+
+```bash
+python3 - <<'PY'
+import coverage, numba, whisper
+print("coverage", coverage.__version__)
+print("numba", numba.__version__)
+print("whisper", whisper.__version__)
+PY
+```
+
+Then retry:
+
+```bash
+cd mentorpi_ws
+source install/setup.bash
+ros2 run voice_interface_pkg speech_to_text_node --ros-args -p list_audio_devices:=true
+```
+
+If your system Python has a lot of mixed packages, a virtual environment is safer:
+
+```bash
+python3 -m venv ~/.venvs/robot-voice-ai
+source ~/.venvs/robot-voice-ai/bin/activate
+pip install --upgrade pip
+pip install "coverage>=7" numpy sounddevice openai-whisper
+```
+
 ## Suggested Next Steps
 
 1. Wire `robot_bringup` to actual MentorPi drivers and launch files.
