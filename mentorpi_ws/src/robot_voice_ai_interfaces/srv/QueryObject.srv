@@ -1,0 +1,4 @@
+string label
+---
+bool found
+robot_voice_ai_interfaces/ObjectSighting sighting

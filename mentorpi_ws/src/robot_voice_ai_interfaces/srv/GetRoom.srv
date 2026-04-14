@@ -1,0 +1,4 @@
+string name
+---
+bool found
+robot_voice_ai_interfaces/Room room

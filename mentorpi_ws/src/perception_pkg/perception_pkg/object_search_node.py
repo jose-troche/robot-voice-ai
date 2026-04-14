@@ -2,6 +2,7 @@ import json
 
 import rclpy
 from rclpy.node import Node
+from robot_voice_ai_interfaces.msg import ObjectSighting
 from std_msgs.msg import String
 
 
@@ -9,7 +10,7 @@ class ObjectSearchNode(Node):
     def __init__(self) -> None:
         super().__init__("object_search_node")
         self.create_subscription(String, "/task_plan", self.handle_plan, 10)
-        self.create_subscription(String, "/detected_objects", self.handle_detection, 10)
+        self.create_subscription(ObjectSighting, "/detected_objects", self.handle_detection, 10)
         self.response_pub = self.create_publisher(String, "/robot_response", 10)
         self.current_query = None
         self.get_logger().info("object_search_node ready")
@@ -22,10 +23,14 @@ class ObjectSearchNode(Node):
         self.get_logger().info(f"starting object search for '{self.current_query}'")
         self.response_pub.publish(String(data=f"Searching for {self.current_query}"))
 
-    def handle_detection(self, msg: String) -> None:
+    def handle_detection(self, msg: ObjectSighting) -> None:
         if not self.current_query:
             return
-        detection = json.loads(msg.data)
+        detection = {
+            "label": msg.label,
+            "position": [msg.position.x, msg.position.y],
+            "room_name": msg.room_name,
+        }
         self.get_logger().info(f"received detection candidate {detection}")
 
 

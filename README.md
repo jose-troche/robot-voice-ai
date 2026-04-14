@@ -6,6 +6,7 @@ Project docs:
 - LinkedIn draft: [content/linkedin-post-01.md](/home/jatroche/robot-voice-ai/content/linkedin-post-01.md)
 - Imported source transcript: [imports/chatgpt-share-69dd8e49.md](/home/jatroche/robot-voice-ai/imports/chatgpt-share-69dd8e49.md)
 - ROS 2 workspace scaffold: [mentorpi_ws/README.md](/home/jatroche/robot-voice-ai/mentorpi_ws/README.md)
+- Custom interfaces: [mentorpi_ws/src/robot_voice_ai_interfaces/package.xml](/home/jatroche/robot-voice-ai/mentorpi_ws/src/robot_voice_ai_interfaces/package.xml)
 
 Source share URL:
 

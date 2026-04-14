@@ -7,6 +7,7 @@ This workspace scaffolds the architecture described in [../architecture.md](/hom
 ```text
 mentorpi_ws/
 └── src/
+    ├── robot_voice_ai_interfaces/
     ├── robot_bringup/
     ├── navigation_stack/
     ├── slam_mapping/
@@ -21,9 +22,10 @@ mentorpi_ws/
 ## What This Scaffold Includes
 
 - `ament_python` package skeletons
+- a shared ROS 2 interfaces package for rooms and object memory
 - starter nodes for the main architecture components
 - placeholder launch and config files
-- JSON-based message payloads for fast iteration
+- a real Nav2 action-client scaffold in the navigation executor
 
 ## What It Does Not Include Yet
 
@@ -44,8 +46,8 @@ source install/setup.bash
 
 ## Suggested Next Steps
 
-1. Replace JSON strings with custom messages and services where needed.
-2. Wire `robot_bringup` to actual MentorPi drivers and launch files.
-3. Connect `navigation_executor_pkg` to the real Nav2 action server.
-4. Back `semantic_map_pkg` with SQLite or a more durable store.
-5. Add RViz tools for polygon creation and inspection.
+1. Wire `robot_bringup` to actual MentorPi drivers and launch files.
+2. Finish connecting `navigation_executor_pkg` to a live Nav2 stack and AMCL.
+3. Back `semantic_map_pkg` with SQLite or a more durable store.
+4. Add RViz tools for polygon creation and inspection.
+5. Replace placeholder speech and perception backends with production integrations.
