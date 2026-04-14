@@ -33,7 +33,7 @@ class SpeechToTextNode(Node):
         self.declare_parameter("audio_device_index", -1)
         self.declare_parameter("chunk_seconds", 4.0)
         self.declare_parameter("language", "en")
-        self.declare_parameter("energy_threshold", 0.00075)
+        self.declare_parameter("energy_threshold", 0.0007)
         self.declare_parameter("poll_interval_seconds", 0.25)
         self.declare_parameter("audio_device", "")
         self.declare_parameter("auto_listen", True)
@@ -139,6 +139,13 @@ class SpeechToTextNode(Node):
         )
         self.get_logger().info(
             f"speech_to_text_node energy_threshold={self.energy_threshold:.5f}"
+        )
+        self.get_logger().info(
+            "speech_to_text_node latency settings: chunk_seconds=%.2f poll_interval=%.2f"
+            % (
+                self.chunk_seconds,
+                self.poll_interval_seconds,
+            )
         )
         if self.debug_capture:
             self._safe_log(
