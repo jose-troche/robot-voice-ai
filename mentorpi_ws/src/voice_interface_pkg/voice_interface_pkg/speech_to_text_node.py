@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 import rclpy
+from rclpy._rclpy_pybind11 import RCLError
 from rclpy.node import Node
 from std_msgs.msg import String
 
@@ -502,5 +503,7 @@ def main() -> None:
         node.get_logger().info("keyboard interrupt received, shutting down speech_to_text_node")
     finally:
         node.destroy_node()
-        if rclpy.ok():
+        try:
             rclpy.shutdown()
+        except RCLError:
+            pass
