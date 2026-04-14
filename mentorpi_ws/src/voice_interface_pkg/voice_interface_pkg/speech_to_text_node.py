@@ -122,6 +122,7 @@ class SpeechToTextNode(Node):
         self.resolved_audio_device = None
         self.capture_sample_rate = self.sample_rate
         self.capture_chunk_count = 0
+        self._destroyed = False
 
         self.create_subscription(String, "/speech_to_text/control", self.handle_control, 10)
         self._load_model()
@@ -471,11 +472,24 @@ class SpeechToTextNode(Node):
         )
 
     def destroy_node(self):
+        if self._destroyed:
+            return
+        self._destroyed = True
         self.stop_event.set()
+        self.listening_enabled = False
+        if sd is not None:
+            try:
+                sd.stop()
+            except Exception as exc:
+                self.get_logger().warning(f"failed to stop audio backend cleanly: {exc}")
         if self.capture_thread and self.capture_thread.is_alive():
-            self.capture_thread.join(timeout=1.0)
+            self.capture_thread.join(timeout=max(1.0, self.chunk_seconds + 1.0))
+            if self.capture_thread.is_alive():
+                self.get_logger().warning("capture thread did not exit before timeout")
         if self.transcribe_thread and self.transcribe_thread.is_alive():
-            self.transcribe_thread.join(timeout=1.0)
+            self.transcribe_thread.join(timeout=2.0)
+            if self.transcribe_thread.is_alive():
+                self.get_logger().warning("transcribe thread did not exit before timeout")
         super().destroy_node()
 
 
@@ -484,6 +498,8 @@ def main() -> None:
     node = SpeechToTextNode()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info("keyboard interrupt received, shutting down speech_to_text_node")
     finally:
         node.destroy_node()
         rclpy.shutdown()
