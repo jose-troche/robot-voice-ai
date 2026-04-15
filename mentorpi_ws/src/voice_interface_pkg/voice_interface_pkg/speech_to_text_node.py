@@ -19,9 +19,9 @@ except ImportError:
     sd = None
 
 try:
-    import whisper
+    from faster_whisper import WhisperModel
 except ImportError:
-    whisper = None
+    WhisperModel = None
 
 
 class SpeechToTextNode(Node):
@@ -29,11 +29,16 @@ class SpeechToTextNode(Node):
         super().__init__("speech_to_text_node")
         self.voice_pub = self.create_publisher(String, "/voice_text", 10)
         self.declare_parameter("model_name", "base")
+        self.declare_parameter("model_device", "cpu")
+        self.declare_parameter("compute_type", "int8")
+        self.declare_parameter("beam_size", 1)
         self.declare_parameter("sample_rate", 16000)
         self.declare_parameter("audio_device_index", -1)
-        self.declare_parameter("chunk_seconds", 4.0)
+        self.declare_parameter("chunk_seconds", 2.0)
+        self.declare_parameter("block_seconds", 0.25)
+        self.declare_parameter("max_audio_queue_size", 2)
         self.declare_parameter("language", "en")
-        self.declare_parameter("energy_threshold", 0.0007)
+        self.declare_parameter("energy_threshold", 0.0005)
         self.declare_parameter("poll_interval_seconds", 0.25)
         self.declare_parameter("audio_device", "")
         self.declare_parameter("auto_listen", True)
@@ -51,6 +56,15 @@ class SpeechToTextNode(Node):
         self.declare_parameter("minimum_energy_threshold", 0.001)
 
         self.model_name = self.get_parameter("model_name").get_parameter_value().string_value
+        self.model_device = (
+            self.get_parameter("model_device").get_parameter_value().string_value
+        )
+        self.compute_type = (
+            self.get_parameter("compute_type").get_parameter_value().string_value
+        )
+        self.beam_size = max(
+            1, self.get_parameter("beam_size").get_parameter_value().integer_value
+        )
         self.sample_rate = (
             self.get_parameter("sample_rate").get_parameter_value().integer_value
         )
@@ -59,6 +73,15 @@ class SpeechToTextNode(Node):
         )
         self.chunk_seconds = (
             self.get_parameter("chunk_seconds").get_parameter_value().double_value
+        )
+        self.block_seconds = (
+            self.get_parameter("block_seconds").get_parameter_value().double_value
+        )
+        self.max_audio_queue_size = max(
+            1,
+            self.get_parameter("max_audio_queue_size")
+            .get_parameter_value()
+            .integer_value,
         )
         self.language = self.get_parameter("language").get_parameter_value().string_value
         self.energy_threshold = (
@@ -135,16 +158,21 @@ class SpeechToTextNode(Node):
         self._start_workers()
 
         self.get_logger().info(
-            f"speech_to_text_node ready with local Whisper model '{self.model_name}'"
+            "speech_to_text_node ready with faster-whisper model "
+            f"'{self.model_name}' on device '{self.model_device}' "
+            f"(compute_type={self.compute_type}, beam_size={self.beam_size})"
         )
         self.get_logger().info(
             f"speech_to_text_node energy_threshold={self.energy_threshold:.5f}"
         )
         self.get_logger().info(
-            "speech_to_text_node latency settings: chunk_seconds=%.2f poll_interval=%.2f"
+            "speech_to_text_node latency settings: chunk_seconds=%.2f "
+            "block_seconds=%.2f poll_interval=%.2f max_audio_queue_size=%d"
             % (
                 self.chunk_seconds,
+                self.block_seconds,
                 self.poll_interval_seconds,
+                self.max_audio_queue_size,
             )
         )
         if self.debug_capture:
@@ -165,16 +193,24 @@ class SpeechToTextNode(Node):
             pass
 
     def _load_model(self) -> None:
-        if whisper is None:
+        if WhisperModel is None:
             self.get_logger().error(
-                "whisper is not installed. Install 'openai-whisper' to enable speech-to-text."
+                "faster-whisper is not installed. Install 'faster-whisper' "
+                "to enable speech-to-text."
             )
             return
 
         try:
-            self.model = whisper.load_model(self.model_name)
+            self.model = WhisperModel(
+                self.model_name,
+                device=self.model_device,
+                compute_type=self.compute_type,
+            )
         except Exception as exc:
-            self.get_logger().error(f"failed to load Whisper model '{self.model_name}': {exc}")
+            self.get_logger().error(
+                "failed to load faster-whisper model "
+                f"'{self.model_name}' on device '{self.model_device}': {exc}"
+            )
 
     def _log_audio_devices(self) -> None:
         if not self.list_audio_devices:
@@ -260,7 +296,9 @@ class SpeechToTextNode(Node):
             self.get_logger().error(f"audio_file does not exist: {path}")
             return
         if self.model is None:
-            self.get_logger().warning("Whisper model unavailable; cannot transcribe audio file")
+            self.get_logger().warning(
+                "faster-whisper model unavailable; cannot transcribe audio file"
+            )
             return
         self._transcribe_file(path)
 
@@ -340,80 +378,131 @@ class SpeechToTextNode(Node):
 
     def _capture_loop(self) -> None:
         frames_per_chunk = max(1, int(self.capture_sample_rate * self.chunk_seconds))
+        frames_per_block = max(1, int(self.capture_sample_rate * self.block_seconds))
+        buffered_audio = np.empty((0,), dtype=np.float32)
+
+        try:
+            stream = sd.InputStream(
+                samplerate=self.capture_sample_rate,
+                blocksize=frames_per_block,
+                channels=1,
+                dtype="float32",
+                device=self.resolved_audio_device,
+            )
+            stream.start()
+        except Exception as exc:
+            self.get_logger().error(f"microphone input stream failed to start: {exc}")
+            return
+
         while not self.stop_event.is_set():
             if not self.listening_enabled:
                 if self.debug_capture:
                     self._safe_log("info", "capture loop idle because listening is disabled")
+                buffered_audio = np.empty((0,), dtype=np.float32)
                 time.sleep(self.poll_interval_seconds)
                 continue
             try:
                 start_time = time.time()
-                audio = sd.rec(
-                    frames_per_chunk,
-                    samplerate=self.capture_sample_rate,
-                    channels=1,
-                    dtype="float32",
-                    device=self.resolved_audio_device,
-                )
-                sd.wait()
+                audio, overflowed = stream.read(frames_per_block)
                 elapsed = time.time() - start_time
             except Exception as exc:
                 self.get_logger().error(f"microphone capture failed: {exc}")
                 time.sleep(2.0)
                 continue
 
-            self.capture_chunk_count += 1
             audio = np.squeeze(audio)
             if audio.size == 0:
                 if self.debug_capture:
                     self._safe_log(
                         "warning",
-                        f"capture chunk {self.capture_chunk_count}: empty audio buffer"
+                        "capture block returned an empty audio buffer"
                     )
-                time.sleep(self.poll_interval_seconds)
                 continue
 
-            rms = float(np.sqrt(np.mean(np.square(audio))))
-            peak = float(np.max(np.abs(audio)))
-            should_log_chunk = (
-                self.debug_capture
-                and self.capture_chunk_count % self.debug_every_n_chunks == 0
-            )
-            if should_log_chunk:
+            if overflowed:
+                self._safe_log(
+                    "warning",
+                    "audio input stream overflow detected; consider a smaller model "
+                    "or lower chunk_seconds",
+                )
+
+            buffered_audio = np.concatenate((buffered_audio, audio.astype(np.float32)))
+
+            if self.debug_capture:
+                block_rms = float(np.sqrt(np.mean(np.square(audio))))
                 self._safe_log(
                     "info",
-                    "capture chunk %d: samples=%d rms=%.5f peak=%.5f "
-                    "queue=%d capture_dt=%.3fs sample_rate=%d device=%s"
+                    "capture block: samples=%d rms=%.5f queue=%d read_dt=%.3fs buffer=%d"
                     % (
-                        self.capture_chunk_count,
                         int(audio.size),
-                        rms,
-                        peak,
+                        block_rms,
                         self.audio_queue.qsize(),
                         elapsed,
-                        self.capture_sample_rate,
-                        str(self.resolved_audio_device),
+                        int(buffered_audio.size),
                     )
                 )
-            if self.log_audio_levels:
-                self.get_logger().info(f"audio rms={rms:.5f}")
-            if rms < self.energy_threshold:
-                if should_log_chunk:
-                    self._safe_log(
-                        "info",
-                        f"capture chunk {self.capture_chunk_count}: below energy threshold "
-                        f"{self.energy_threshold:.5f}, dropping"
-                    )
-                time.sleep(self.poll_interval_seconds)
-                continue
 
-            self.audio_queue.put(audio.copy())
+            while buffered_audio.size >= frames_per_chunk and not self.stop_event.is_set():
+                chunk = buffered_audio[:frames_per_chunk].copy()
+                buffered_audio = buffered_audio[frames_per_chunk:]
+                self.capture_chunk_count += 1
+                self._handle_captured_chunk(chunk, elapsed)
+
+        try:
+            stream.stop()
+            stream.close()
+        except Exception:
+            pass
+
+    def _handle_captured_chunk(self, audio: np.ndarray, capture_elapsed: float) -> None:
+        rms = float(np.sqrt(np.mean(np.square(audio))))
+        peak = float(np.max(np.abs(audio)))
+        should_log_chunk = (
+            self.debug_capture and self.capture_chunk_count % self.debug_every_n_chunks == 0
+        )
+        if should_log_chunk:
+            self._safe_log(
+                "info",
+                "capture chunk %d: samples=%d rms=%.5f peak=%.5f "
+                "queue=%d capture_dt=%.3fs sample_rate=%d device=%s"
+                % (
+                    self.capture_chunk_count,
+                    int(audio.size),
+                    rms,
+                    peak,
+                    self.audio_queue.qsize(),
+                    capture_elapsed,
+                    self.capture_sample_rate,
+                    str(self.resolved_audio_device),
+                )
+            )
+        if self.log_audio_levels:
+            self.get_logger().info(f"audio rms={rms:.5f}")
+        if rms < self.energy_threshold:
             if should_log_chunk:
                 self._safe_log(
                     "info",
-                    f"capture chunk {self.capture_chunk_count}: queued for transcription"
+                    f"capture chunk {self.capture_chunk_count}: below energy threshold "
+                    f"{self.energy_threshold:.5f}, dropping"
                 )
-            time.sleep(self.poll_interval_seconds)
+            return
+
+        while self.audio_queue.qsize() >= self.max_audio_queue_size:
+            try:
+                self.audio_queue.get_nowait()
+                self._safe_log(
+                    "warning",
+                    "dropping stale audio chunk because the transcription queue is full",
+                )
+            except queue.Empty:
+                continue
+
+        self.audio_queue.put_nowait(audio.copy())
+        if should_log_chunk:
+            self._safe_log(
+                "info",
+                f"capture chunk {self.capture_chunk_count}: queued for transcription"
+            )
 
     def _transcribe_loop(self) -> None:
         while not self.stop_event.is_set():
@@ -425,29 +514,34 @@ class SpeechToTextNode(Node):
                 continue
 
             if self.model is None:
-                self.get_logger().warning("Whisper model is unavailable; dropping audio chunk")
+                self.get_logger().warning(
+                    "faster-whisper model is unavailable; dropping audio chunk"
+                )
                 continue
 
             try:
                 if self.debug_capture:
                     self._safe_log(
                         "info",
-                        f"transcribe loop: starting Whisper on chunk with {len(audio)} samples"
+                        "transcribe loop: starting faster-whisper on chunk "
+                        f"with {len(audio)} samples"
                     )
-                result = self.model.transcribe(
+                segments, _info = self.model.transcribe(
                     audio.astype(np.float32),
                     language=self.language or None,
-                    fp16=False,
-                    verbose=False,
+                    beam_size=self.beam_size,
                 )
             except Exception as exc:
                 self.get_logger().error(f"transcription failed: {exc}")
                 continue
 
-            text = result.get("text", "").strip()
+            text = "".join(segment.text for segment in segments).strip()
             if not text:
                 if self.debug_capture:
-                    self._safe_log("info", "transcribe loop: Whisper returned empty text")
+                    self._safe_log(
+                        "info",
+                        "transcribe loop: faster-whisper returned empty text",
+                    )
                 continue
 
             self.voice_pub.publish(String(data=text))
@@ -455,17 +549,16 @@ class SpeechToTextNode(Node):
 
     def _transcribe_file(self, path: Path) -> None:
         try:
-            result = self.model.transcribe(
+            segments, _info = self.model.transcribe(
                 str(path),
                 language=self.language or None,
-                fp16=False,
-                verbose=False,
+                beam_size=self.beam_size,
             )
         except Exception as exc:
             self.get_logger().error(f"file transcription failed for '{path}': {exc}")
             return
 
-        text = result.get("text", "").strip()
+        text = "".join(segment.text for segment in segments).strip()
         if not text:
             self.get_logger().info(f"no speech detected in file '{path}'")
             return
@@ -491,7 +584,9 @@ class SpeechToTextNode(Node):
         if command.startswith("file:"):
             path = Path(command.split(":", 1)[1]).expanduser()
             if self.model is None:
-                self.get_logger().warning("Whisper model unavailable; cannot transcribe file")
+                self.get_logger().warning(
+                    "faster-whisper model unavailable; cannot transcribe file"
+                )
                 return
             self._transcribe_file(path)
             return
