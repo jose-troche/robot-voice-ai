@@ -1,5 +1,68 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.10)
 project(robot_voice_ai_interfaces)
+
+# ROS Humble still pulls in FindPythonInterp/FindPythonLibs via
+# python_cmake_module. Keep the legacy behavior enabled on newer CMake so the
+# upstream module works without emitting CMP0148 developer warnings.
+if(POLICY CMP0148)
+  cmake_policy(SET CMP0148 OLD)
+endif()
+
+# ROS Humble's Python discovery can get confused by Pixi/Conda on macOS and
+# accidentally probe a different system Python. Seed the active environment's
+# Python paths so rosidl_generator_py stays on the interpreter from `pixi run`.
+if(APPLE AND DEFINED ENV{CONDA_PREFIX})
+  set(_python_prefix "$ENV{CONDA_PREFIX}")
+  set(_python_executable "${_python_prefix}/bin/python")
+
+  if(EXISTS "${_python_executable}")
+    execute_process(
+      COMMAND "${_python_executable}" -c "import sysconfig; print(sysconfig.get_path('include')); print(sysconfig.get_config_var('LDLIBRARY') or ''); print(f'{sysconfig.get_config_var(\"py_version_short\") or \"\"}')"
+      OUTPUT_VARIABLE _python_env_info
+      RESULT_VARIABLE _python_env_result
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    if(_python_env_result EQUAL 0)
+      string(REPLACE "\n" ";" _python_env_info "${_python_env_info}")
+      list(GET _python_env_info 0 _python_include_dir)
+      list(GET _python_env_info 1 _python_library_name)
+      list(GET _python_env_info 2 _python_version_short)
+      set(_python_library "${_python_prefix}/lib/${_python_library_name}")
+
+      if(NOT EXISTS "${_python_library}" AND NOT _python_version_short STREQUAL "")
+        set(_python_library "${_python_prefix}/lib/libpython${_python_version_short}.dylib")
+      endif()
+
+      if(EXISTS "${_python_include_dir}" AND EXISTS "${_python_library}")
+        execute_process(
+          COMMAND "${_python_executable}" -c "import numpy; print(numpy.get_include())"
+          OUTPUT_VARIABLE _python_numpy_include
+          RESULT_VARIABLE _python_numpy_result
+          OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+
+        set(Python_ROOT_DIR "${_python_prefix}" CACHE PATH "Python root directory" FORCE)
+        set(Python3_ROOT_DIR "${_python_prefix}" CACHE PATH "Python3 root directory" FORCE)
+        set(Python_FIND_VIRTUALENV FIRST CACHE STRING "Prefer the active virtual environment" FORCE)
+        set(Python3_FIND_VIRTUALENV FIRST CACHE STRING "Prefer the active virtual environment" FORCE)
+        set(Python_EXECUTABLE "${_python_executable}" CACHE FILEPATH "Python executable" FORCE)
+        set(PYTHON_EXECUTABLE "${_python_executable}" CACHE FILEPATH "Python executable" FORCE)
+        set(Python_INCLUDE_DIR "${_python_include_dir}" CACHE PATH "Python include directory" FORCE)
+        set(Python_INCLUDE_DIRS "${_python_include_dir}" CACHE STRING "Python include directories" FORCE)
+        set(PYTHON_INCLUDE_DIRS "${_python_include_dir}" CACHE STRING "Python include directories" FORCE)
+        set(Python_LIBRARY "${_python_library}" CACHE FILEPATH "Python library" FORCE)
+        set(Python_LIBRARIES "${_python_library}" CACHE STRING "Python libraries" FORCE)
+        set(PYTHON_LIBRARY "${_python_library}" CACHE FILEPATH "Python library" FORCE)
+        set(PYTHON_LIBRARIES "${_python_library}" CACHE STRING "Python libraries" FORCE)
+
+        if(_python_numpy_result EQUAL 0 AND EXISTS "${_python_numpy_include}")
+          set(Python_NumPy_INCLUDE_DIRS "${_python_numpy_include}" CACHE STRING "NumPy include directories" FORCE)
+        endif()
+      endif()
+    endif()
+  endif()
+endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)

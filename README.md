@@ -1,6 +1,20 @@
 # Robot Voice AI
 
-Project docs:
+## Cloning this repo
+
+### Prerequisites
+* Install `pixi`: `curl -fsSL https://pixi.sh/install.sh | sh`
+
+### Clone repo
+* Clone this repo and set it up
+```
+git clone https://github.com/jose-troche/robot-voice-ai
+cd robot-voice-ai
+pixi install
+
+```
+
+## Project docs:
 
 - Architecture reference: [architecture.md](/home/jatroche/robot-voice-ai/architecture.md)
 - LinkedIn draft: [content/linkedin-post-01.md](/home/jatroche/robot-voice-ai/content/linkedin-post-01.md)
