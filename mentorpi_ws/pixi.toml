@@ -6,6 +6,10 @@ platforms = ["osx-64"]
 version = "0.1.0"
 
 [tasks]
+build = {cmd = "colcon build --symlink-install", inputs = ["src"]}
+
+[activation]
+scripts = ["install/setup.bash"]
 
 [dependencies]
 ros-humble-desktop = ">=0.10.0,<0.11"

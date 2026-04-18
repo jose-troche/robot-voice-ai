@@ -9,9 +9,8 @@
 * Clone this repo and set it up
 ```
 git clone https://github.com/jose-troche/robot-voice-ai
-cd robot-voice-ai
-pixi install
-pixi run colcon build
+cd robot-voice-ai/mentorpi_ws
+pixi run build
 ```
 
 ## Project docs:

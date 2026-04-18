@@ -8,6 +8,33 @@ if(POLICY CMP0148)
   cmake_policy(SET CMP0148 OLD)
 endif()
 
+# `colcon` may pass this legacy catkin flag to CMake packages in mixed ROS
+# environments. We do not need special handling for it here, but touching it
+# marks the cache entry as used and avoids an otherwise noisy configure warning.
+if(DEFINED CATKIN_INSTALL_INTO_PREFIX_ROOT)
+  set(CATKIN_INSTALL_INTO_PREFIX_ROOT "${CATKIN_INSTALL_INTO_PREFIX_ROOT}")
+endif()
+
+# `colcon build --symlink-install` also forwards this catkin-era variable to
+# plain CMake packages. Consume it as a no-op so CMake does not warn.
+if(DEFINED CATKIN_SYMLINK_INSTALL)
+  set(CATKIN_SYMLINK_INSTALL "${CATKIN_SYMLINK_INSTALL}")
+endif()
+
+# On macOS, the generated rosidl Python extension modules are installed under
+# `lib/python*/site-packages/...` while the companion dylibs live in `lib/`.
+# Teach CMake the final runtime search paths up front so it does not generate
+# install-time `install_name_tool -delete_rpath` calls for build-only paths that
+# newer Apple toolchains may already have omitted.
+if(APPLE)
+  set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+  set(CMAKE_INSTALL_RPATH "@loader_path;@loader_path/../../..")
+
+  if(DEFINED ENV{CONDA_PREFIX})
+    list(APPEND CMAKE_INSTALL_RPATH "$ENV{CONDA_PREFIX}/lib")
+  endif()
+endif()
+
 # ROS Humble's Python discovery can get confused by Pixi/Conda on macOS and
 # accidentally probe a different system Python. Seed the active environment's
 # Python paths so rosidl_generator_py stays on the interpreter from `pixi run`.
