@@ -1,17 +1,17 @@
 # Robot Voice AI
 
-## Cloning this repo
+## Developmemt environment
 
 ### Prerequisites
 * Install `pixi`: `curl -fsSL https://pixi.sh/install.sh | sh`
 
-### Clone repo
+### Clone repo and build it
 * Clone this repo and set it up
 ```
 git clone https://github.com/jose-troche/robot-voice-ai
 cd robot-voice-ai
 pixi install
-
+pixi run colcon build
 ```
 
 ## Project docs:
