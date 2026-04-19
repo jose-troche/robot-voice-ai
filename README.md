@@ -13,6 +13,8 @@ cd robot-voice-ai/mentorpi_ws
 pixi run build
 ```
 
+When you enter the workspace with `pixi shell`, Pixi now exports `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` and `ROS_LOG_DIR=/tmp/roslogs` by default for ROS 2 commands.
+
 ## Project docs:
 
 - Architecture reference: [architecture.md](/home/jatroche/robot-voice-ai/architecture.md)

@@ -40,14 +40,18 @@ From the repo root:
 
 ```bash
 cd mentorpi_ws
+pixi shell
 colcon build
 source install/setup.bash
 ```
+
+The Pixi activation environment sets `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` and `ROS_LOG_DIR=/tmp/roslogs` by default.
 
 ## Smoke Test Launch
 
 ```bash
 cd mentorpi_ws
+pixi shell
 source install/setup.bash
 ros2 launch robot_bringup smoke_test.launch.py
 ```
@@ -61,13 +65,14 @@ Run the local faster-whisper STT node:
 
 ```bash
 cd mentorpi_ws
+pixi shell
 source install/setup.bash
 ros2 run voice_interface_pkg speech_to_text_node
 ```
 
 For low-gain VM microphone setups, the default STT tuning now assumes a lower voice activity threshold and leaves calibration off by default.
 
-The live path is tuned for stream-based capture with `beam_size:=1`, `compute_type:=float32`, and `chunk_seconds:=2.5` on CPU by default.
+The live path is tuned for stream-based capture with `beam_size:=1`, `compute_type:=float32`, and `chunk_seconds:=2.0` on CPU by default.
 The node also suppresses low-energy `"Thank you"`-style silence hallucinations by default; you can tune this with `suppress_silence_thank_you` and `silence_hallucination_rms_threshold` if needed.
 
 Run with a different faster-whisper model:
@@ -155,25 +160,6 @@ If you want to trade a little accuracy for faster turnaround, shorten the chunk 
 ```bash
 ros2 run voice_interface_pkg speech_to_text_node --ros-args -p chunk_seconds:=1.0 -p block_seconds:=0.20 -p max_audio_queue_size:=1
 ```
-
-## Speech-To-Text Troubleshooting
-
-If `speech_to_text_node` fails because `faster_whisper` cannot be imported, install the runtime dependencies in the same Python environment used by ROS:
-
-```bash
-python3 -m pip install --user --upgrade numpy sounddevice faster-whisper
-```
-
-If your system Python has a lot of mixed packages, a virtual environment is safer:
-
-```bash
-python3 -m venv ~/.venvs/robot-voice-ai
-source ~/.venvs/robot-voice-ai/bin/activate
-pip install --upgrade pip
-pip install numpy sounddevice faster-whisper
-```
-
-If live mic capture works only with very low thresholds in a VM, prefer manual tuning such as `energy_threshold:=0.0005` and keep `auto_calibrate:=false`.
 
 ## Suggested Next Steps
 

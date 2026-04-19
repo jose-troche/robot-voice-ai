@@ -12,6 +12,7 @@ build = {cmd = "colcon build --symlink-install", inputs = ["src"]}
 scripts = ["install/setup.bash"]
 
 [activation.env]
+RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
 ROS_LOG_DIR = "/tmp/roslogs"
 
 [dependencies]
