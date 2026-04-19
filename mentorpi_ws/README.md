@@ -67,7 +67,8 @@ ros2 run voice_interface_pkg speech_to_text_node
 
 For low-gain VM microphone setups, the default STT tuning now assumes a lower voice activity threshold and leaves calibration off by default.
 
-The live path is tuned for lower latency with stream-based capture, `beam_size:=1`, and `compute_type:=int8` on CPU by default.
+The live path is tuned for stream-based capture with `beam_size:=1`, `compute_type:=float32`, and `chunk_seconds:=2.5` on CPU by default.
+The node also suppresses low-energy `"Thank you"`-style silence hallucinations by default; you can tune this with `suppress_silence_thank_you` and `silence_hallucination_rms_threshold` if needed.
 
 Run with a different faster-whisper model:
 
@@ -146,7 +147,7 @@ The node publishes recognized text to `/voice_text`.
 You can also tune the backend explicitly:
 
 ```bash
-ros2 run voice_interface_pkg speech_to_text_node --ros-args -p model_device:=cpu -p compute_type:=int8 -p beam_size:=1
+ros2 run voice_interface_pkg speech_to_text_node --ros-args -p model_device:=cpu -p compute_type:=float32 -p beam_size:=1
 ```
 
 If you want to trade a little accuracy for faster turnaround, shorten the chunk and keep the queue tight:

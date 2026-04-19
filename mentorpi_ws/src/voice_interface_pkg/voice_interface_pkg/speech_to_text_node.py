@@ -30,7 +30,7 @@ class SpeechToTextNode(Node):
         self.voice_pub = self.create_publisher(String, "/voice_text", 10)
         self.declare_parameter("model_name", "base")
         self.declare_parameter("model_device", "cpu")
-        self.declare_parameter("compute_type", "int8")
+        self.declare_parameter("compute_type", "float32")
         self.declare_parameter("beam_size", 1)
         self.declare_parameter("sample_rate", 16000)
         self.declare_parameter("audio_device_index", -1)
@@ -38,7 +38,7 @@ class SpeechToTextNode(Node):
         self.declare_parameter("block_seconds", 0.25)
         self.declare_parameter("max_audio_queue_size", 2)
         self.declare_parameter("language", "en")
-        self.declare_parameter("energy_threshold", 0.0005)
+        self.declare_parameter("energy_threshold", 0.0008)
         self.declare_parameter("poll_interval_seconds", 0.25)
         self.declare_parameter("audio_device", "")
         self.declare_parameter("auto_listen", True)
@@ -50,6 +50,8 @@ class SpeechToTextNode(Node):
         self.declare_parameter("log_audio_levels", False)
         self.declare_parameter("debug_capture", False)
         self.declare_parameter("debug_every_n_chunks", 1)
+        self.declare_parameter("suppress_silence_thank_you", True)
+        self.declare_parameter("silence_hallucination_rms_threshold", 0.01)
         self.declare_parameter("auto_calibrate", False)
         self.declare_parameter("calibration_seconds", 2.0)
         self.declare_parameter("calibration_multiplier", 3.0)
@@ -121,6 +123,16 @@ class SpeechToTextNode(Node):
         )
         self.debug_every_n_chunks = max(
             1, self.get_parameter("debug_every_n_chunks").get_parameter_value().integer_value
+        )
+        self.suppress_silence_thank_you = (
+            self.get_parameter("suppress_silence_thank_you")
+            .get_parameter_value()
+            .bool_value
+        )
+        self.silence_hallucination_rms_threshold = (
+            self.get_parameter("silence_hallucination_rms_threshold")
+            .get_parameter_value()
+            .double_value
         )
         self.auto_calibrate = (
             self.get_parameter("auto_calibrate").get_parameter_value().bool_value
@@ -497,7 +509,7 @@ class SpeechToTextNode(Node):
             except queue.Empty:
                 continue
 
-        self.audio_queue.put_nowait(audio.copy())
+        self.audio_queue.put_nowait((audio.copy(), rms))
         if should_log_chunk:
             self._safe_log(
                 "info",
@@ -507,7 +519,7 @@ class SpeechToTextNode(Node):
     def _transcribe_loop(self) -> None:
         while not self.stop_event.is_set():
             try:
-                audio = self.audio_queue.get(timeout=0.5)
+                audio, rms = self.audio_queue.get(timeout=0.5)
             except queue.Empty:
                 if self.debug_capture:
                     self._safe_log("info", "transcribe loop waiting for audio chunk")
@@ -542,6 +554,18 @@ class SpeechToTextNode(Node):
                         "info",
                         "transcribe loop: faster-whisper returned empty text",
                     )
+                continue
+
+            normalized_text = " ".join(text.lower().split())
+            if (
+                self.suppress_silence_thank_you
+                and normalized_text in {"thank you", "thanks", "thank you.", "thanks."}
+                and rms <= self.silence_hallucination_rms_threshold
+            ):
+                self.get_logger().info(
+                    "suppressing likely silence hallucination '%s' (rms=%.5f)"
+                    % (text, rms)
+                )
                 continue
 
             self.voice_pub.publish(String(data=text))
