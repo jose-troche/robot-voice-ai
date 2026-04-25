@@ -7,6 +7,7 @@ version = "0.1.0"
 
 [tasks]
 build = {cmd = "colcon build --symlink-install", inputs = ["src"]}
+exploration-smoke-test = {cmd = "bash -lc 'source install/setup.bash && ./.pixi/envs/default/bin/python3 scripts/exploration_smoke_test.py'", inputs = ["src"]}
 
 [activation]
 scripts = ["install/setup.bash"]

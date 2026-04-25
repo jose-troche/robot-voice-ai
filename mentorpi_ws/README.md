@@ -59,6 +59,19 @@ ros2 launch robot_bringup smoke_test.launch.py
 This launch starts the semantic map, voice router, task planner, navigation executor,
 exploration manager, and object search nodes together.
 
+## Exploration Smoke Test
+
+Run the automated room-tagging smoke test:
+
+```bash
+cd mentorpi_ws
+pixi run exploration-smoke-test
+```
+
+This launches the stack, publishes a unique `"this is ..."` room tag on `/voice_text`,
+verifies that `src/semantic_map_pkg/storage/map_db.json` was updated, and restores the
+original database contents unless you choose to keep the inserted room.
+
 ## Speech-To-Text Usage
 
 Run the local faster-whisper STT node:
