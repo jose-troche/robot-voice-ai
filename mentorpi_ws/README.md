@@ -68,7 +68,7 @@ cd mentorpi_ws
 pixi run exploration-smoke-test
 ```
 
-This launches the stack, publishes a unique `"this is ..."` room tag on `/voice_text`,
+This launches the stack, publishes a unique `"this room is the ..."` room tag on `/voice_text`,
 verifies that `src/semantic_map_pkg/storage/map_db.json` was updated, and restores the
 original database contents unless you choose to keep the inserted room.
 

@@ -9,6 +9,9 @@ def parse_intent(text: str) -> dict:
         }
     if lowered.startswith("find "):
         return {"intent": "search_object", "query": lowered}
-    if lowered.startswith("this is "):
-        return {"intent": "tag_room", "target": lowered.replace("this is ", "", 1).strip()}
+    if lowered.startswith("this room is the "):
+        return {
+            "intent": "tag_room",
+            "target": lowered.replace("this room is the ", "", 1).strip(),
+        }
     return {"intent": "unknown", "raw_text": text}
