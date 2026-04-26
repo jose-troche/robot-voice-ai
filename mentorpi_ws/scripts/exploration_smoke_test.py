@@ -119,7 +119,7 @@ def main() -> int:
     )
 
     room_entry = None
-    published_phrase = f"this is {args.room_name}"
+    published_phrase = f"this is the room {args.room_name}"
     node = None
 
     try:

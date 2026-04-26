@@ -68,9 +68,31 @@ cd mentorpi_ws
 pixi run exploration-smoke-test
 ```
 
-This launches the stack, publishes a unique `"this room is the ..."` room tag on `/voice_text`,
+This launches the stack, publishes a unique `"this is the room ..."` room tag on `/voice_text`,
 verifies that `src/semantic_map_pkg/storage/map_db.json` was updated, and restores the
 original database contents unless you choose to keep the inserted room.
+
+## RViz Room Polygon Workflow
+
+You can now draw room polygons directly on top of the map in RViz:
+
+```bash
+cd mentorpi_ws
+pixi shell
+source install/setup.bash
+ros2 run exploration_pkg exploration_manager_node
+```
+
+In RViz:
+- add a `Map` display for the occupancy grid
+- add a `Marker` display on `/exploration/current_polygon`
+- use the `Publish Point` tool to click room corners on the map
+
+Then use this flow:
+- click 3 or more room corners with `Publish Point`
+- say `this is the room kitchen` to save the current polygon
+
+Say `clear room polygon` to reset the in-progress polygon.
 
 ## Speech-To-Text Usage
 
