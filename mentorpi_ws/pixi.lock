@@ -404,6 +404,7 @@ environments:
       - conda: https://conda.anaconda.org/robostack-humble/osx-arm64/ros-humble-map-msgs-2.1.0-np126py311h2a51a2c_13.conda
       - conda: https://conda.anaconda.org/robostack-humble/osx-arm64/ros-humble-message-filters-4.3.7-np126py311h2a51a2c_13.conda
       - conda: https://conda.anaconda.org/robostack-humble/osx-arm64/ros-humble-nav-msgs-4.9.0-np126py311h2a51a2c_13.conda
+      - conda: https://conda.anaconda.org/robostack-humble/osx-arm64/ros-humble-nav2-msgs-1.1.18-np126py311h2a51a2c_13.conda
       - conda: https://conda.anaconda.org/robostack-humble/osx-arm64/ros-humble-orocos-kdl-vendor-0.2.5-np126py311h2a51a2c_13.conda
       - conda: https://conda.anaconda.org/robostack-humble/osx-arm64/ros-humble-osrf-pycommon-2.1.6-np126py311h2a51a2c_13.conda
       - conda: https://conda.anaconda.org/robostack-humble/osx-arm64/ros-humble-pcl-conversions-2.4.5-np126py311h2a51a2c_13.conda
@@ -6974,6 +6975,28 @@ packages:
   license: BSD-3-Clause
   size: 181965
   timestamp: 1753311937040
+- conda: https://conda.anaconda.org/robostack-humble/osx-arm64/ros-humble-nav2-msgs-1.1.18-np126py311h2a51a2c_13.conda
+  sha256: 2d72e2ade0df4c88341acfd0de79413f19f39e439b2e9407e5d0e7c7886e0463
+  md5: 0ae0f6c708bc60a26f9f5d726972f7c0
+  depends:
+  - python
+  - ros-humble-action-msgs
+  - ros-humble-builtin-interfaces
+  - ros-humble-geometry-msgs
+  - ros-humble-nav-msgs
+  - ros-humble-rclcpp
+  - ros-humble-ros-workspace
+  - ros-humble-rosidl-default-generators
+  - ros-humble-std-msgs
+  - ros2-distro-mutex 0.7.* humble_*
+  - libcxx >=18
+  - __osx >=11.0
+  - python_abi 3.11.* *_cp311
+  - numpy >=1.26.4,<2.0a0
+  - ros2-distro-mutex >=0.7.0,<0.8.0a0
+  license: BSD-3-Clause
+  size: 783370
+  timestamp: 1753313919526
 - conda: https://conda.anaconda.org/robostack-humble/osx-arm64/ros-humble-orocos-kdl-vendor-0.2.5-np126py311h2a51a2c_13.conda
   sha256: 9f287dbe59b60380125bb399761f2a37d34303085989897c47a380a18c9025c9
   md5: a0a1e34f139a68847b84417657cab682

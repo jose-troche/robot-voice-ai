@@ -18,6 +18,7 @@ ROS_LOG_DIR = "/tmp/roslogs"
 
 [dependencies]
 ros-humble-desktop = ">=0.10.0,<0.11"
+ros-humble-nav2-msgs = "==1.1.18"
 colcon-common-extensions = ">=0.3.0,<0.4"
 setuptools = "<=58.2.0"
 numpy = ">=1.26,<3"

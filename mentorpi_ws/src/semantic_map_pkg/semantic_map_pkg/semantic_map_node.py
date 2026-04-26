@@ -7,6 +7,7 @@ from geometry_msgs.msg import Point32
 from robot_voice_ai_interfaces.msg import ObjectSighting, Room
 from robot_voice_ai_interfaces.srv import GetRoom, QueryObject
 
+
 class SemanticMapNode(Node):
     def __init__(self) -> None:
         super().__init__("semantic_map_node")

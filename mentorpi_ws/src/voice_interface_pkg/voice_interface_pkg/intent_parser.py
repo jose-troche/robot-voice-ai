@@ -7,14 +7,24 @@ ROOM_TAG_PATTERNS = (
 )
 
 
+def normalize_room_target(target: str) -> str:
+    normalized = target.strip().lower()
+    if normalized.startswith("the "):
+        return normalized[4:].strip()
+    return normalized
+
+
 def parse_intent(text: str) -> dict:
     lowered = text.strip().lower()
     if lowered.startswith("go to "):
-        return {"intent": "navigate", "target": lowered.replace("go to ", "", 1).strip()}
+        return {
+            "intent": "navigate",
+            "target": normalize_room_target(lowered.replace("go to ", "", 1)),
+        }
     if lowered.startswith("navigate to "):
         return {
             "intent": "navigate",
-            "target": lowered.replace("navigate to ", "", 1).strip(),
+            "target": normalize_room_target(lowered.replace("navigate to ", "", 1)),
         }
     if lowered.startswith("find "):
         return {"intent": "search_object", "query": lowered}
